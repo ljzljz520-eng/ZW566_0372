@@ -27,30 +27,31 @@ func (d *Desk) finish(h *Handle) {
 	delete(d.active, h.ID)
 	h.Release()
 }
+// closeOne acquires, closes, and releases the handle for a single record.
+// The defer is scoped to this helper, so the resource is freed as soon as the
+// item completes instead of piling up across the whole batch.
+func (d *Desk) closeOne(ctx context.Context, id string) error {
+	h, e := d.acquire(id)
+	if e != nil {
+		return e
+	}
+	defer d.finish(h)
+	return d.Close(ctx, id)
+}
 func (d *Desk) BatchClose(ctx context.Context, ids []string) error {
 	for _, id := range ids {
-		h, e := d.acquire(id)
-		if e != nil {
+		if e := d.closeOne(ctx, id); e != nil {
 			return e
 		}
-		if e = d.Close(ctx, id); e != nil {
-			return e
-		}
-		defer d.finish(h)
 	}
 	return nil
 }
 
 func (d *Desk) BatchCloseObserved(ctx context.Context, ids []string, observe func(int)) error {
 	for i, id := range ids {
-		h, e := d.acquire(id)
-		if e != nil {
+		if e := d.closeOne(ctx, id); e != nil {
 			return e
 		}
-		if e = d.Close(ctx, id); e != nil {
-			return e
-		}
-		defer d.finish(h)
 		if observe != nil {
 			observe(i + 1)
 		}
